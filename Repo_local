@@ -1,0 +1,203 @@
+               Architecture
+
+                INTERNET
+                   │
+                   │
+          ┌────────▼────────┐
+          │  Serveurs Ubuntu │
+          │  officiels       │
+          └────────┬────────┘
+                   │
+                   │ téléchargements
+                   ▼
+          ┌──────────────────┐
+          │ Serveur Ubuntu   │
+          │                  │
+          │  Reprepro        │
+          │  Apache2         │
+          │  GPG             │
+          │                  │
+          │ 192.168.0.179    │
+          └────────┬─────────┘
+                   │
+             HTTP / réseau LAN
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+ ┌──────▼──────┐       ┌──────▼──────┐
+ │ Client       │       │ Client       │
+ │ Ubuntu 22.04 │       │ Ubuntu 22.04 │
+ └─────────────┘       └─────────────┘
+Introduction
+
+..... L'objectif de ce LAB:....
+
+ L'objectif est :
+Le serveur récupère/stocke les paquets .deb, Reprepro construit l'index APT, Apache les publie sur le réseau, GPG signe le dépôt, et les clients Ubuntu utilisent ce dépôt avec APT
+
+Les quatre technologies principales Avant les commandes, il faut comprendre le rôle de chacune. ...APT APT est utilisé sur les clients. Par exemple il permet de faire : sudo apt update sudo apt install htop APT cherche les paquets dans les dépôts configurés.
+
+...Reprepro
+
+reprepro est utilisé principalement sur le serveur.
+
+Il transforme un ensemble de .deb en véritable dépôt Debian/Ubuntu.
+
+Il s'occupe notamment de : organiser les paquets ; créer Packages ; créer Packages.gz ; créer Release ; créer InRelease ; gérer les distributions ; signer les métadonnées avec GPG. ...Apache2
+
+Apache est le serveur Web.
+
+Il permet aux clients d'accéder à :
+
+http://192.168.0.179/debian
+
+Sans Apache, le dépôt existe sur le disque mais les autres ordinateurs ne peuvent pas facilement le télécharger en HTTP. ...GPG
+
+GPG permet de signer cryptographiquement le dépôt. Le client peut ainsi vérifier : "Est-ce que les informations du dépôt ont été signées par la clé que je connais ?" Cela évite notamment qu'un attaquant modifie silencieusement les métadonnées du dépôt.
+
+PROCEDURE DE DEPLOIMENT DE NOTRE SERVEUR REPO
+
+Installer les paquets sur le serveur sudo apt install reprepro apache2 gnupg curl Explication de cette commande sudo : exécute la commande avec les privilèges administrateur apt install: installe des logiciels reprepro: gestionnaire du depôt apache2 serveur Web gnpug gestion de GPG Curl tests HHTP et téléchargement Cette étape prépare le serveur. 2.Création de l'arborescence du dépôt sudo mkdir -p /var/www/debian/conf sudo mkdir -p /var/www/debian/incoming
+Donne la propriété à l'utilisateur qui gérera le dépôt : sudo chown -R server:server/var/www/repo_local sudo chmod -R 755 /var/www/repo_local NB:server c'est l'utlisateur
+
+Pourquoi ? /var/www/debian: c'est la racine de notre depôt dans mon cas de ce lab j'ai remplace debian par repo_local Conf : contient de la configuration Repreproµ Incoming : c'est une zone pratique ou on peut déposer les fichiers.deb avand des les intégrer dans notre repo pool:Contiendra les paquets réellement intégrés au dépôt. dists:Contiendra les métadonnées APT
+
+On obtient progressivement :
+
+/var/www/repo_local/
+├── conf/ 
+├── incoming/ 
+├── dists/ 
+└── pool/ 
+3 Créer la clé GPG
+Il faut créer une clé GPG pour signer les depôt connecté avec l'utilisateur server 
+Pour creer une clé GPG il faut taper la commande:
+gpg --full-generate-key 
+Choisis par exemple : RSA and RSA 4096
+Pour l'expiration, tu peux choisir une durée adaptée à ton environnement.
+Pour l'identité : 0 Real 
+name:mon-repo 
+Email: adresse email Commentaire: clé GPG
+NB: vous devriez saisir un mot depasse APPUYER SUR O pour sortir
+
+Le fichier distributions
+Nous devons créé un fichier nommé distribution dans le repertoire suivant:
+/var/www/repo_local/conf/distributions 
+Ensuite nous devons l'editer en mettant ceux-ci avec la commande suivant: 
+NB: c'est l'un des fichers les plus important du projet
+Origin: repo_local
+Label: repo_local 
+Suite: stable
+Codename: jammy 
+Architectures: amd64 arm64
+Version: 22.04.5 LTS
+Components: main
+Description: repo_local
+SignWith: 3DF942FB109EA16A
+
+....Explication ligne par ligne Origin Origin: repo_local
+
+Identifie l'origine du dépôt.
+
+Label Label: repo_local
+
+Nom lisible du dépôt.
+
+Suite Suite: stable
+
+Indique la suite logique du dépôt.
+
+Codename Codename: jammy ou noble etc... sa depensd de la version de votre systeme
+
+Très important.
+
+jammy correspond à Ubuntu 22.04.
+
+Donc notre dépôt est destiné à Ubuntu 22.04.
+
+Architectures Architectures: amd64 arm64
+
+Cela signifie que nous autorisons les architectures :
+
+amd64 arm64
+
+Dans notre laboratoire actuel, nous avons surtout utilisé :
+
+amd64 Components Components: main
+
+Notre dépôt utilise le composant :
+
+main SignWith SignWith: 3DF942FB109EA16A C'est l'identifiant de notre clé GPG utilisée pour signer le dépôt.
+
+NB: vous pouvez utiliser la commande at /etc/os-release pour voir les information de votre systeme
+
+Export le dépôt
+Pour exporter le depôt on se palce: 
+cd /var/www/repo_local puis:
+reprerpro export 
+Vous devez sasire un mot de passe qui avez fournie lors de la creation du cle GPG
+Vérifie : 
+find /var/www/repo_local/dists -type f ls -lh /var/www/repo_local/dists/noble/InRelease
+
+6-Exporter la clé publique
+gpg --armor --export F3E3D27F48AFD097 > /var/www/debian/repo_local.asc 
+Vérifie : ls -lh /var/www/repo_local/repo_local.asc 
+Puis :
+head -n 2 /var/www/repo_local/repo_local.asc 
+Tu dois obtenir : -----BEGIN PGP PUBLIC KEY BLOCK-----
+
+NB: vous devriez remplacer cette clé par le votre
+
+Pour voir cette clé taper cette commande: gpg --list-secret-keys --keyid-format LONG
+Vous deriez voir un exemple comme ca :sec rsa4096/AF0ED797EDC4D4F0 2026-09-07 [SC]
+
+7-configuration de apache2 
+Nous devons editer un fichier: sudo nano /etc/apache2/conf-available/repo_local.conf en mettant ceux-ci
+
+#Dépôt APT reprepro
+Alias /debian /var/www/repo_local
+Options Indexes FollowSymLinks
+ AllowOverride None
+ Require all granted 
+<Directory /var/www/repo_local> Enrégister et quitter
+
+...Activation et finalisation du fichier pour la configuration de l'alias http
+sudo a2enconf repo_local.conf
+
+Tester la syntaxe Apache pour s'assurer qu'il n'y a pas d'erreur
+sudo apache2ctl configtest
+Si le retour est "Syntax OK", redémarrer le serveur web et le premier dépôt devrait apparaitre
+sudo systemctl reload apache2.service
+
+Tester le serveur Depuis repo : curl -I http://localhost/repo_local/dists/noble/InRelease Puis : curl -I http://localhost/repo_local/repo_local.asc 
+Les deux doivent retourner quelque chose comme : HTTP/1.1 200 OK
+9. Installer la clé sur le client
+Sur client :
+sudo mkdir -p /etc/apt/keyrings
+
+Puis :
+curl -fsSL http://192.168.0.179/repo_local/repo_local.asc | \
+sudo gpg --dearmor -o /etc/apt/keyrings/repo_local.gpg
+Vérifie :
+gpg --show-keys /etc/apt/keyrings/repo_local.gpg
+
+10. Ajouter le dépôt APT
+Sur client :
+sudo nano /etc/apt/sources.list.d/local_repo.sources
+Je recommande le format .sources moderne :
+Types: deb
+URIs: http://192.168.0.159/repo_local
+Suites: noble
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/repo_local.gpg
+
+Puis :
+sudo apt update
+Tu devrais voir quelque chose comme :
+Réception de :1 http://192.168.0.159/repo_local jammy InRelease [1 794 B]
+et aucune erreur de signature.
+
+
+
+
